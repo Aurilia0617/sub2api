@@ -1126,9 +1126,10 @@
                     <Select
                       :modelValue="rule.service_tier"
                       @update:modelValue="
-                        (val: string) => {
-                          rule.service_tier = val as 'all' | 'priority' | 'flex';
-                          if (val === 'all' && rule.action === 'override') {
+                        (val: string | number | boolean | null) => {
+                          const serviceTier = val as 'all' | 'priority' | 'flex';
+                          rule.service_tier = serviceTier;
+                          if (serviceTier === 'all' && rule.action === 'override') {
                             rule.action = 'pass';
                           }
                         }
@@ -1147,9 +1148,10 @@
                     <Select
                       :modelValue="rule.action"
                       @update:modelValue="
-                        (val: string) => {
-                          rule.action = val as 'pass' | 'filter' | 'block' | 'override';
-                          if (val === 'override' && rule.service_tier === 'all') {
+                        (val: string | number | boolean | null) => {
+                          const action = val as 'pass' | 'filter' | 'block' | 'override';
+                          rule.action = action;
+                          if (action === 'override' && rule.service_tier === 'all') {
                             rule.service_tier = 'priority';
                           }
                         }
