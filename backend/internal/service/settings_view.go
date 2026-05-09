@@ -382,9 +382,10 @@ func DefaultRectifierSettings() *RectifierSettings {
 
 // Beta Policy 策略常量
 const (
-	BetaPolicyActionPass   = "pass"   // 透传，不做任何处理
-	BetaPolicyActionFilter = "filter" // 过滤，从 beta header 中移除该 token
-	BetaPolicyActionBlock  = "block"  // 拦截，直接返回错误
+	BetaPolicyActionPass     = "pass"     // 透传，不做任何处理
+	BetaPolicyActionFilter   = "filter"   // 过滤，从 beta header 中移除该 token
+	BetaPolicyActionBlock    = "block"    // 拦截，直接返回错误
+	BetaPolicyActionOverride = "override" // 覆盖，强制将 service_tier 设为规则指定的值（仅用于 OpenAI fast policy）
 
 	BetaPolicyScopeAll     = "all"     // 所有账号类型
 	BetaPolicyScopeOAuth   = "oauth"   // 仅 OAuth 账号

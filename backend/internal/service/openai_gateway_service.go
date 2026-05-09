@@ -2364,8 +2364,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	// Apply OpenAI fast policy (参照 Claude BetaPolicy 的 fast-mode 过滤)：
 	// 针对 body 的 service_tier 字段（"priority" 即 fast，"flex"），按策略
-	// 执行 filter（删除字段）或 block（拒绝请求）。对 gpt-5.5 等模型屏蔽
-	// fast 时在此生效。
+	// 执行 filter（删除字段）、block（拒绝请求）或 override（强制覆盖值）。
+	// 对 gpt-5.5 等模型屏蔽 fast 时在此生效。
 	//
 	// 注意：
 	//   1. 此处统一使用 upstreamModel（已经过 GetMappedModel +
@@ -2376,30 +2376,45 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	//      否则 native /responses 入口透传 "fast" 给上游会被拒。chat-
 	//      completions 入口由 normalizeResponsesBodyServiceTier 完成同一
 	//      行为，这里手工实现等效逻辑。
-	if rawTier, ok := reqBody["service_tier"].(string); ok {
-		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
-			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
-			switch action {
-			case BetaPolicyActionBlock:
-				msg := errMsg
-				if msg == "" {
-					msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, upstreamModel)
-				}
-				blocked := &OpenAIFastBlockedError{Message: msg}
-				writeOpenAIFastPolicyBlockedResponse(c, blocked)
-				return nil, blocked
-			case BetaPolicyActionFilter:
+	//   3. action=override 时无论请求是否携带 service_tier，都强制写入目标值。
+	{
+		rawTier, hasTier := reqBody["service_tier"].(string)
+		var normTier string
+		if hasTier {
+			normTier = normalizedOpenAIServiceTierValue(rawTier)
+		}
+		// 即使请求没有 service_tier（normTier=""），也需要评估 override 规则
+		action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
+		switch action {
+		case BetaPolicyActionBlock:
+			msg := errMsg
+			if msg == "" {
+				msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, upstreamModel)
+			}
+			blocked := &OpenAIFastBlockedError{Message: msg}
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+			return nil, blocked
+		case BetaPolicyActionFilter:
+			if hasTier {
 				delete(reqBody, "service_tier")
 				bodyModified = true
 				disablePatch()
-			default:
-				// pass：若客户端传的是别名 "fast"，归一化为 "priority"
-				// 后写回 body，确保上游收到的是其能识别的规范值。
-				if normTier != rawTier {
-					reqBody["service_tier"] = normTier
-					bodyModified = true
-					markPatchSet("service_tier", normTier)
-				}
+			}
+		case BetaPolicyActionOverride:
+			// errMsg 携带目标 tier 值
+			targetTier := errMsg
+			if targetTier != "" {
+				reqBody["service_tier"] = targetTier
+				bodyModified = true
+				markPatchSet("service_tier", targetTier)
+			}
+		default:
+			// pass：若客户端传的是别名 "fast"，归一化为 "priority"
+			// 后写回 body，确保上游收到的是其能识别的规范值。
+			if hasTier && normTier != "" && normTier != rawTier {
+				reqBody["service_tier"] = normTier
+				bodyModified = true
+				markPatchSet("service_tier", normTier)
 			}
 		}
 	}
@@ -5959,6 +5974,22 @@ func evaluateOpenAIFastPolicyWithSettings(settings *OpenAIFastPolicySettings, ac
 		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
 		}
+		// override 规则：ServiceTier 是覆盖目标值而非匹配条件，匹配所有请求
+		// （包括没有 service_tier 的请求，即 tier=""）。
+		if rule.Action == BetaPolicyActionOverride {
+			eff := BetaPolicyRule{
+				Action:         rule.Action,
+				ModelWhitelist: rule.ModelWhitelist,
+				FallbackAction: rule.FallbackAction,
+			}
+			resolvedAction, _ := resolveRuleAction(eff, model)
+			if resolvedAction == BetaPolicyActionOverride {
+				// 返回 override action，errMsg 携带目标 tier 值
+				return BetaPolicyActionOverride, rule.ServiceTier
+			}
+			// fallback 不是 override（如 pass），按 fallback 结果返回
+			return resolvedAction, ""
+		}
 		ruleTier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
 		if ruleTier != "" && ruleTier != OpenAIFastTierAny && ruleTier != tier {
 			continue
@@ -6007,8 +6038,9 @@ func openAIFastPolicySettingsFromContext(ctx context.Context) *OpenAIFastPolicyS
 
 // applyOpenAIFastPolicyToBody applies the OpenAI fast policy to a raw request
 // body. When action=filter it removes the service_tier field; when
-// action=block it returns (body, *OpenAIFastBlockedError). On pass it
-// normalizes the service_tier value (e.g. client alias "fast" → "priority"),
+// action=block it returns (body, *OpenAIFastBlockedError); when
+// action=override it forces service_tier to the rule-specified value. On pass
+// it normalizes the service_tier value (e.g. client alias "fast" → "priority"),
 // rewriting the body so the upstream receives a slug it recognizes.
 //
 // Rationale for normalize-on-pass: chat-completions / messages 入口在调用本
@@ -6021,13 +6053,8 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 		return body, nil
 	}
 	rawTier := gjson.GetBytes(body, "service_tier").String()
-	if rawTier == "" {
-		return body, nil
-	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
-	if normTier == "" {
-		return body, nil
-	}
+	// 即使 rawTier 为空（请求没有 service_tier），也需要评估 override 规则
 	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
 	switch action {
 	case BetaPolicyActionBlock:
@@ -6037,14 +6064,28 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 		}
 		return body, &OpenAIFastBlockedError{Message: msg}
 	case BetaPolicyActionFilter:
+		if rawTier == "" {
+			return body, nil
+		}
 		trimmed, err := sjson.DeleteBytes(body, "service_tier")
 		if err != nil {
 			return body, fmt.Errorf("strip service_tier from body: %w", err)
 		}
 		return trimmed, nil
+	case BetaPolicyActionOverride:
+		// errMsg 携带目标 tier 值
+		targetTier := errMsg
+		if targetTier == "" {
+			return body, nil
+		}
+		updated, err := sjson.SetBytes(body, "service_tier", targetTier)
+		if err != nil {
+			return body, fmt.Errorf("override service_tier in body: %w", err)
+		}
+		return updated, nil
 	default:
 		// pass：把别名（如 "fast"）写回为规范值（"priority"）。
-		if normTier == rawTier {
+		if normTier == "" || normTier == rawTier {
 			return body, nil
 		}
 		updated, err := sjson.SetBytes(body, "service_tier", normTier)
@@ -6117,13 +6158,8 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 		return frame, nil, nil
 	}
 	rawTier := gjson.GetBytes(frame, "service_tier").String()
-	if rawTier == "" {
-		return frame, nil, nil
-	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
-	if normTier == "" {
-		return frame, nil, nil
-	}
+	// 即使 rawTier 为空（帧没有 service_tier），也需要评估 override 规则
 	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
 	switch action {
 	case BetaPolicyActionBlock:
@@ -6133,11 +6169,24 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 		}
 		return frame, &OpenAIFastBlockedError{Message: msg}, nil
 	case BetaPolicyActionFilter:
+		if rawTier == "" {
+			return frame, nil, nil
+		}
 		trimmed, err := sjson.DeleteBytes(frame, "service_tier")
 		if err != nil {
 			return frame, nil, fmt.Errorf("strip service_tier from ws frame: %w", err)
 		}
 		return trimmed, nil, nil
+	case BetaPolicyActionOverride:
+		targetTier := errMsg
+		if targetTier == "" {
+			return frame, nil, nil
+		}
+		updated, err := sjson.SetBytes(frame, "service_tier", targetTier)
+		if err != nil {
+			return frame, nil, fmt.Errorf("override service_tier in ws frame: %w", err)
+		}
+		return updated, nil, nil
 	default:
 		return frame, nil, nil
 	}

@@ -3848,7 +3848,7 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 	}
 
 	validActions := map[string]bool{
-		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true,
+		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true, BetaPolicyActionOverride: true,
 	}
 	validScopes := map[string]bool{
 		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true, BetaPolicyScopeBedrock: true,
@@ -3868,6 +3868,10 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 		settings.Rules[i].ServiceTier = tier
 		if !validActions[rule.Action] {
 			return fmt.Errorf("rule[%d]: invalid action %q", i, rule.Action)
+		}
+		// override 不允许 service_tier=all（覆盖目标值必须是具体的 tier）
+		if rule.Action == BetaPolicyActionOverride && tier == OpenAIFastTierAny {
+			return fmt.Errorf("rule[%d]: action \"override\" requires a specific service_tier (priority or flex), not \"all\"", i)
 		}
 		if !validScopes[rule.Scope] {
 			return fmt.Errorf("rule[%d]: invalid scope %q", i, rule.Scope)

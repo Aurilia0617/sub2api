@@ -1126,12 +1126,14 @@
                     <Select
                       :modelValue="rule.service_tier"
                       @update:modelValue="
-                        rule.service_tier = $event as
-                          | 'all'
-                          | 'priority'
-                          | 'flex'
+                        (val: string) => {
+                          rule.service_tier = val as 'all' | 'priority' | 'flex';
+                          if (val === 'all' && rule.action === 'override') {
+                            rule.action = 'pass';
+                          }
+                        }
                       "
-                      :options="openaiFastPolicyTierOptions"
+                      :options="getOpenaiFastPolicyTierOptions(rule)"
                     />
                   </div>
 
@@ -1145,9 +1147,14 @@
                     <Select
                       :modelValue="rule.action"
                       @update:modelValue="
-                        rule.action = $event as 'pass' | 'filter' | 'block'
+                        (val: string) => {
+                          rule.action = val as 'pass' | 'filter' | 'block' | 'override';
+                          if (val === 'override' && rule.service_tier === 'all') {
+                            rule.service_tier = 'priority';
+                          }
+                        }
                       "
-                      :options="openaiFastPolicyActionOptions"
+                      :options="getOpenaiFastPolicyActionOptions(rule)"
                     />
                   </div>
 
@@ -1284,8 +1291,9 @@
                         | 'pass'
                         | 'filter'
                         | 'block'
+                        | 'override'
                     "
-                    :options="openaiFastPolicyActionOptions"
+                    :options="getOpenaiFastPolicyActionOptions(rule)"
                   />
                   <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
                     {{
@@ -8081,7 +8089,23 @@ const openaiFastPolicyActionOptions = computed(() => [
   { value: "pass", label: t("admin.settings.openaiFastPolicy.actionPass") },
   { value: "filter", label: t("admin.settings.openaiFastPolicy.actionFilter") },
   { value: "block", label: t("admin.settings.openaiFastPolicy.actionBlock") },
+  { value: "override", label: t("admin.settings.openaiFastPolicy.actionOverride") },
 ]);
+
+// 当 action=override 时隐藏 "全部 tier"；当 service_tier=all 时隐藏 override
+function getOpenaiFastPolicyTierOptions(rule: OpenAIFastPolicyRule) {
+  if (rule.action === "override") {
+    return openaiFastPolicyTierOptions.value.filter((o) => o.value !== "all");
+  }
+  return openaiFastPolicyTierOptions.value;
+}
+
+function getOpenaiFastPolicyActionOptions(rule: OpenAIFastPolicyRule) {
+  if (rule.service_tier === "all") {
+    return openaiFastPolicyActionOptions.value.filter((o) => o.value !== "override");
+  }
+  return openaiFastPolicyActionOptions.value;
+}
 
 const openaiFastPolicyScopeOptions = computed(() => [
   { value: "all", label: t("admin.settings.openaiFastPolicy.scopeAll") },
