@@ -158,7 +158,7 @@ const route = useRoute()
 const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = ref<AdminUsageLog[]>([]); const loading = ref(false); const exporting = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const requestedModelStats = ref<ModelStat[]>([]); const upstreamModelStats = ref<ModelStat[]>([]); const mappingModelStats = ref<ModelStat[]>([]); const groupStats = ref<GroupStat[]>([]); const chartsLoading = ref(false); const modelStatsLoading = ref(false); const granularity = ref<'day' | 'hour'>('hour')
 const modelDistributionMetric = ref<DistributionMetric>('tokens')
-const modelDistributionSource = ref<ModelDistributionSource>('requested')
+const modelDistributionSource = ref<ModelDistributionSource>('upstream')
 const loadedModelSources = reactive<Record<ModelDistributionSource, boolean>>({
   requested: false,
   upstream: false,
