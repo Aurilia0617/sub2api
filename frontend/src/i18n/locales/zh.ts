@@ -4849,6 +4849,8 @@ export default {
           kind: '类型',
           platform: '平台',
           model: '模型',
+          account: '账号',
+          tokens: 'Token',
           duration: '耗时',
           status: '状态码',
           requestId: '请求ID',

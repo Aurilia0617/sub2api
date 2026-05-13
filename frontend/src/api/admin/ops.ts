@@ -174,6 +174,10 @@ export interface OpsRequestDetail {
   model?: string
   duration_ms?: number | null
   status_code?: number | null
+  input_tokens?: number
+  output_tokens?: number
+  cache_creation_tokens?: number
+  cache_read_tokens?: number
 
   error_id?: number | null
   phase?: string
@@ -183,6 +187,7 @@ export interface OpsRequestDetail {
   user_id?: number | null
   api_key_id?: number | null
   account_id?: number | null
+  account_name?: string
   group_id?: number | null
 
   stream?: boolean

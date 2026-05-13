@@ -25,6 +25,11 @@ type OpsRequestDetail struct {
 	DurationMs *int `json:"duration_ms,omitempty"`
 	StatusCode *int `json:"status_code,omitempty"`
 
+	InputTokens         int `json:"input_tokens,omitempty"`
+	OutputTokens        int `json:"output_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+
 	// When Kind == "error", ErrorID links to /admin/ops/errors/:id.
 	ErrorID *int64 `json:"error_id,omitempty"`
 
@@ -32,10 +37,11 @@ type OpsRequestDetail struct {
 	Severity string `json:"severity,omitempty"`
 	Message  string `json:"message,omitempty"`
 
-	UserID    *int64 `json:"user_id,omitempty"`
-	APIKeyID  *int64 `json:"api_key_id,omitempty"`
-	AccountID *int64 `json:"account_id,omitempty"`
-	GroupID   *int64 `json:"group_id,omitempty"`
+	UserID      *int64 `json:"user_id,omitempty"`
+	APIKeyID    *int64 `json:"api_key_id,omitempty"`
+	AccountID   *int64 `json:"account_id,omitempty"`
+	AccountName string `json:"account_name,omitempty"`
+	GroupID     *int64 `json:"group_id,omitempty"`
 
 	Stream bool `json:"stream"`
 }

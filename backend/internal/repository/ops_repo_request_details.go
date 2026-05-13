@@ -94,6 +94,10 @@ WITH combined AS (
     ul.model AS model,
     ul.duration_ms AS duration_ms,
     NULL::INT AS status_code,
+    ul.input_tokens AS input_tokens,
+    ul.output_tokens AS output_tokens,
+    ul.cache_creation_tokens AS cache_creation_tokens,
+    ul.cache_read_tokens AS cache_read_tokens,
     NULL::BIGINT AS error_id,
     NULL::TEXT AS phase,
     NULL::TEXT AS severity,
@@ -101,6 +105,7 @@ WITH combined AS (
     ul.user_id AS user_id,
     ul.api_key_id AS api_key_id,
     ul.account_id AS account_id,
+    a.name AS account_name,
     ul.group_id AS group_id,
     ul.stream AS stream
   FROM usage_logs ul
@@ -118,6 +123,10 @@ WITH combined AS (
     o.model AS model,
     o.duration_ms AS duration_ms,
     o.status_code AS status_code,
+    0::INT AS input_tokens,
+    0::INT AS output_tokens,
+    0::INT AS cache_creation_tokens,
+    0::INT AS cache_read_tokens,
     o.id AS error_id,
     o.error_phase AS phase,
     o.severity AS severity,
@@ -125,6 +134,7 @@ WITH combined AS (
     o.user_id AS user_id,
     o.api_key_id AS api_key_id,
     o.account_id AS account_id,
+    a.name AS account_name,
     o.group_id AS group_id,
     o.stream AS stream
   FROM ops_error_logs o
@@ -167,6 +177,10 @@ SELECT
   model,
   duration_ms,
   status_code,
+  input_tokens,
+  output_tokens,
+  cache_creation_tokens,
+  cache_read_tokens,
   error_id,
   phase,
   severity,
@@ -174,6 +188,7 @@ SELECT
   user_id,
   api_key_id,
   account_id,
+  account_name,
   group_id,
   stream
 FROM combined
@@ -213,18 +228,23 @@ LIMIT $%d OFFSET $%d
 			platform  sql.NullString
 			model     sql.NullString
 
-			durationMs sql.NullInt64
-			statusCode sql.NullInt64
-			errorID    sql.NullInt64
+			durationMs          sql.NullInt64
+			statusCode          sql.NullInt64
+			inputTokens         sql.NullInt64
+			outputTokens        sql.NullInt64
+			cacheCreationTokens sql.NullInt64
+			cacheReadTokens     sql.NullInt64
+			errorID             sql.NullInt64
 
 			phase    sql.NullString
 			severity sql.NullString
 			message  sql.NullString
 
-			userID    sql.NullInt64
-			apiKeyID  sql.NullInt64
-			accountID sql.NullInt64
-			groupID   sql.NullInt64
+			userID      sql.NullInt64
+			apiKeyID    sql.NullInt64
+			accountID   sql.NullInt64
+			accountName sql.NullString
+			groupID     sql.NullInt64
 
 			stream bool
 		)
@@ -237,6 +257,10 @@ LIMIT $%d OFFSET $%d
 			&model,
 			&durationMs,
 			&statusCode,
+			&inputTokens,
+			&outputTokens,
+			&cacheCreationTokens,
+			&cacheReadTokens,
 			&errorID,
 			&phase,
 			&severity,
@@ -244,6 +268,7 @@ LIMIT $%d OFFSET $%d
 			&userID,
 			&apiKeyID,
 			&accountID,
+			&accountName,
 			&groupID,
 			&stream,
 		); err != nil {
@@ -257,17 +282,22 @@ LIMIT $%d OFFSET $%d
 			Platform:  strings.TrimSpace(platform.String),
 			Model:     strings.TrimSpace(model.String),
 
-			DurationMs: toIntPtr(durationMs),
-			StatusCode: toIntPtr(statusCode),
-			ErrorID:    toInt64Ptr(errorID),
-			Phase:      phase.String,
-			Severity:   severity.String,
-			Message:    message.String,
+			DurationMs:          toIntPtr(durationMs),
+			StatusCode:          toIntPtr(statusCode),
+			InputTokens:         int(inputTokens.Int64),
+			OutputTokens:        int(outputTokens.Int64),
+			CacheCreationTokens: int(cacheCreationTokens.Int64),
+			CacheReadTokens:     int(cacheReadTokens.Int64),
+			ErrorID:             toInt64Ptr(errorID),
+			Phase:               phase.String,
+			Severity:            severity.String,
+			Message:             message.String,
 
-			UserID:    toInt64Ptr(userID),
-			APIKeyID:  toInt64Ptr(apiKeyID),
-			AccountID: toInt64Ptr(accountID),
-			GroupID:   toInt64Ptr(groupID),
+			UserID:      toInt64Ptr(userID),
+			APIKeyID:    toInt64Ptr(apiKeyID),
+			AccountID:   toInt64Ptr(accountID),
+			AccountName: strings.TrimSpace(accountName.String),
+			GroupID:     toInt64Ptr(groupID),
 
 			Stream: stream,
 		}

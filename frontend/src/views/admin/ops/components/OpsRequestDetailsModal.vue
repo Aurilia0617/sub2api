@@ -146,6 +146,20 @@ const kindBadgeClass = (kind: string) => {
   if (kind === 'error') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
   return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
 }
+
+function formatTokenCount(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString() : '0'
+}
+
+function totalTokens(row: OpsRequestDetail) {
+  return (row.input_tokens || 0) + (row.output_tokens || 0) + (row.cache_creation_tokens || 0) + (row.cache_read_tokens || 0)
+}
+
+function formatAccountLabel(row: OpsRequestDetail) {
+  const name = (row.account_name || '').trim()
+  if (name) return name
+  return row.account_id ? `#${row.account_id}` : '-'
+}
 </script>
 
 <template>
@@ -205,6 +219,12 @@ const kindBadgeClass = (kind: string) => {
                     {{ t('admin.ops.requestDetails.table.model') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t('admin.ops.requestDetails.table.account') }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t('admin.ops.requestDetails.table.tokens') }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     {{ t('admin.ops.requestDetails.table.duration') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -233,6 +253,28 @@ const kindBadgeClass = (kind: string) => {
                   </td>
                   <td class="max-w-[240px] truncate px-4 py-3 text-xs text-gray-600 dark:text-gray-300" :title="row.model || ''">
                     {{ row.model || '-' }}
+                  </td>
+                  <td class="max-w-[180px] truncate px-4 py-3 text-xs font-medium text-gray-700 dark:text-gray-200" :title="formatAccountLabel(row)">
+                    {{ formatAccountLabel(row) }}
+                  </td>
+                  <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                    <div v-if="totalTokens(row) > 0" class="space-y-1">
+                      <div class="flex items-center gap-2 whitespace-nowrap">
+                        <span class="inline-flex items-center gap-1">
+                          <span class="text-emerald-500">↓</span>
+                          <span class="font-medium text-gray-900 dark:text-white">{{ formatTokenCount(row.input_tokens) }}</span>
+                        </span>
+                        <span class="inline-flex items-center gap-1">
+                          <span class="text-violet-500">↑</span>
+                          <span class="font-medium text-gray-900 dark:text-white">{{ formatTokenCount(row.output_tokens) }}</span>
+                        </span>
+                      </div>
+                      <div v-if="(row.cache_read_tokens || 0) > 0 || (row.cache_creation_tokens || 0) > 0" class="flex items-center gap-2 whitespace-nowrap">
+                        <span v-if="(row.cache_read_tokens || 0) > 0" class="font-medium text-sky-600 dark:text-sky-400">{{ formatTokenCount(row.cache_read_tokens) }}</span>
+                        <span v-if="(row.cache_creation_tokens || 0) > 0" class="font-medium text-amber-600 dark:text-amber-400">{{ formatTokenCount(row.cache_creation_tokens) }}</span>
+                      </div>
+                    </div>
+                    <span v-else>-</span>
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                     {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}
